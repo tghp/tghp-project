@@ -57,7 +57,6 @@ class TGHPProject {
     }
 
     async clone() {
-        // TODO: Support various path types: '.' for here, 'some-folder' for relative, and '/Users/whatever/here' for absolute
         const tghpDegit = degit(`tghp/template-${this.type}`, {
             cache: false,
             verbose: true,
