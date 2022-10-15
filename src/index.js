@@ -29,7 +29,7 @@ class TGHPProject {
     async runProcess() {
         await this.clone();
         await this.refactorVariableNames();
-        // await this.removeDeletableGitkeeps();
+        await this.removeDeletableGitkeeps();
     }
 
     formatProjectNames() {
@@ -100,6 +100,20 @@ class TGHPProject {
                     allPathsProcessed = true;
                 }
             }
+        }
+    }
+
+    async removeDeletableGitkeeps() {
+        const paths = (
+            await globby([
+                `${this.dest && this.dest + '/'}**/.gitkeep.delete`,
+            ], {
+                onlyFiles: true,
+            })
+        );
+
+        for (const path of paths) {
+            shell.rm(path);
         }
     }
 }
