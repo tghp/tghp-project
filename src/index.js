@@ -32,7 +32,7 @@ class TGHPProject {
         // await this.removeDeletableGitkeeps();
     }
 
-    async formatProjectNames() {
+    formatProjectNames() {
         const slugifiedProjectName = slugify(this.projectName);
 
         this.projectNames = {
