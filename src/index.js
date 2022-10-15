@@ -1,3 +1,4 @@
+import path from 'path';
 import degit from 'degit';
 import slugify from 'slugify';
 import replace from 'replace-in-file';
@@ -15,12 +16,16 @@ class TGHPProject {
             throw new Error('No proejct name provided');
         }
 
+        if (!dest) {
+            dest = '.';
+        }
+
         this.type = type;
         this.projectName = projectName;
         this.projectNames = {
             standard: projectName,
         };
-        this.dest = dest;
+        this.dest = path.resolve(dest);
 
         this.formatProjectNames();
         this.runProcess();
@@ -72,7 +77,7 @@ class TGHPProject {
             const replacements = await replace({
                 from: new RegExp(`\\$tghp:${projectNameKey}\\$`, 'g'),
                 to: projectNameKeyValue,
-                files: [`./${this.dest}/**`],
+                files: [`${this.dest}/**`],
             });
 
             let allPathsProcessed = false;
@@ -80,8 +85,8 @@ class TGHPProject {
             while (!allPathsProcessed) {
                 const paths = (
                     await globby([
-                        `${this.dest && this.dest + '/'}**`,
-                        `${this.dest && this.dest + '/'}**/`
+                        `${this.dest}/**`,
+                        `${this.dest}/**/`
                     ], {
                         onlyFiles: false,
                         markDirectories: true,
