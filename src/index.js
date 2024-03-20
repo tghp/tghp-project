@@ -5,6 +5,7 @@ import slugify from 'slugify';
 import replace from 'replace-in-file';
 import { globby } from 'globby';
 import shell from 'shelljs';
+import chalk from 'chalk';
 
 class TGHPProject {
 
@@ -32,10 +33,37 @@ class TGHPProject {
         this.runProcess();
     }
 
+    log (message, prefix) {
+      message = message.replace(/\u001b\[.*?m/g, '');
+
+      let logPrefix = chalk.green('[TGHP Project]');
+
+      if (prefix) {
+          logPrefix = chalk.yellow(`[${prefix}]`);
+      }
+
+      if (!prefix) {
+          if (message.includes('Task:')) {
+              console.log(`${logPrefix} ⚙️  ${message}`)
+          } else {
+              console.log(`${logPrefix} ✏️  ${message}`)
+          }
+      } else {
+          console.log(`${logPrefix} ${message}`)
+      }
+    }
+
     async runProcess() {
+        this.log(`Task: Cloning ${this.type} project to ${this.dest}`);
         await this.clone();
+
+        this.log('Task: Refactoring variable names');
         await this.refactorVariableNames();
+
+        this.log('Task: Removing deletable .gitkeep files');
         await this.removeDeletableGitkeeps();
+
+        this.log('Task: Inserting composer versions');
         await this.insertComposerVersions();
     }
 
@@ -65,7 +93,7 @@ class TGHPProject {
         });
 
         tghpDegit.on('info', info => {
-            console.log(info.message);
+            this.log(info.message, 'degit');
         });
 
         await tghpDegit.clone(this.dest);
@@ -73,6 +101,8 @@ class TGHPProject {
 
     async refactorVariableNames() {
         for (const projectNameKey of Object.keys(this.projectNames)) {
+            this.log(`Refactoring ${projectNameKey} to ${this.projectNames[projectNameKey]} in file contents`);
+
             const projectNameKeyValue = this.projectNames[projectNameKey];
 
             const replacements = await replace({
@@ -81,7 +111,12 @@ class TGHPProject {
                 files: [`${this.dest}/**`],
             });
 
+            this.log(`Replaced ${replacements.length} instances`)
+
             let allPathsProcessed = false;
+            let pathsProcessedCount = 0;
+
+            this.log(`Refactoring ${projectNameKey} to ${this.projectNames[projectNameKey]} in file paths`);
 
             while (!allPathsProcessed) {
                 const paths = (
@@ -102,10 +137,13 @@ class TGHPProject {
                     const path = paths[0];
                     const replaceRegex = new RegExp(`\\$tghp:${projectNameKey}\\$`);
                     shell.mv(path, path.replace(replaceRegex, projectNameKeyValue));
+                    pathsProcessedCount++;
                 } else {
                     allPathsProcessed = true;
                 }
             }
+
+            this.log(`Replaced ${pathsProcessedCount} instances`);
         }
     }
 
@@ -117,6 +155,8 @@ class TGHPProject {
                 onlyFiles: true,
             })
         );
+
+        this.log(`Removing ${paths.length} .gitkeep.delete files`);
 
         for (const path of paths) {
             shell.rm(path);
@@ -134,13 +174,13 @@ class TGHPProject {
       if (composerMatches) {
           for (const composerPackage of composerMatches) {
               const packageName = composerPackage.replace(/\$tghp:packagist:([^@]*)@latest\$/, '$1');
-              console.log(`Getting latest version of ${packageName} from Packagist`);
+              this.log(`Getting latest version of ${packageName} from Packagist`);
               const packageMeta = await (await fetch(`https://repo.packagist.org/p2/${packageName}.json`)).json();
 
               if (packageMeta) {
                   composerPackageVersions[packageName] = packageMeta.packages[packageName][0].version.replace(/^v/, '');
               } else {
-                  console.error(`Could not find package ${packageName}`);
+                  this.log(`ERROR: Could not find package ${packageName}`);
               }
           }
       }
@@ -149,13 +189,13 @@ class TGHPProject {
           for (const wpackagistPackage of wpackagistMatches) {
               const wpackageName = wpackagistPackage.replace(/\$tghp:wpackagist:([^@]*)@latest\$/, '$1');
               const packageName = wpackageName.replace('wpackagist-plugin/', '');
-              console.log(`Getting latest version of ${packageName} from the WordPress plugin repository (but sourced via WordPress Packagist)`);
+              this.log(`Getting latest version of ${packageName} from the WordPress plugin repository (but sourced via WordPress Packagist)`);
               const packageMeta = await (await fetch(`https://api.wordpress.org/plugins/info/1.0/${packageName}.json`)).json();
 
               if (packageMeta) {
                   wpackagistPackageVersions[wpackageName] = packageMeta.version;
               } else {
-                  console.error(`Could not find package ${packageName}`);
+                  this.log(`ERROR: Could not find package ${packageName}`);
               }
           }
       }
@@ -163,10 +203,6 @@ class TGHPProject {
       composerJson = composerJson.replace(
         /\$tghp:([^:]*):([^@]*)@latest\$/g,
         (match, source, packageName) => {
-            console.log({
-                source,
-                packageName,
-            })
           if (source === 'packagist') {
             return composerPackageVersions[packageName];
           } else if (source === 'wpackagist') {
