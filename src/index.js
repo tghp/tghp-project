@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import degit from 'degit';
 import slugify from 'slugify';
@@ -35,6 +36,7 @@ class TGHPProject {
         await this.clone();
         await this.refactorVariableNames();
         await this.removeDeletableGitkeeps();
+        await this.insertComposerVersions();
     }
 
     formatProjectNames() {
@@ -119,6 +121,63 @@ class TGHPProject {
         for (const path of paths) {
             shell.rm(path);
         }
+    }
+
+    async insertComposerVersions() {
+      let composerJson = fs.readFileSync(`${this.dest}/composer.json`, 'utf-8');
+      let composerPackageVersions = {};
+      let wpackagistPackageVersions = {};
+
+      const composerMatches = composerJson.match(/\$tghp:packagist:([^@]*)@latest\$/g);
+      const wpackagistMatches = composerJson.match(/\$tghp:wpackagist:([^@]*)@latest\$/g);
+
+      if (composerMatches) {
+          for (const composerPackage of composerMatches) {
+              const packageName = composerPackage.replace(/\$tghp:packagist:([^@]*)@latest\$/, '$1');
+              console.log(`Getting latest version of ${packageName} from Packagist`);
+              const packageMeta = await (await fetch(`https://repo.packagist.org/p2/${packageName}.json`)).json();
+
+              if (packageMeta) {
+                  composerPackageVersions[packageName] = packageMeta.packages[packageName][0].version.replace(/^v/, '');
+              } else {
+                  console.error(`Could not find package ${packageName}`);
+              }
+          }
+      }
+
+      if (wpackagistMatches) {
+          for (const wpackagistPackage of wpackagistMatches) {
+              const wpackageName = wpackagistPackage.replace(/\$tghp:wpackagist:([^@]*)@latest\$/, '$1');
+              const packageName = wpackageName.replace('wpackagist-plugin/', '');
+              console.log(`Getting latest version of ${packageName} from the WordPress plugin repository (but sourced via WordPress Packagist)`);
+              const packageMeta = await (await fetch(`https://api.wordpress.org/plugins/info/1.0/${packageName}.json`)).json();
+
+              if (packageMeta) {
+                  wpackagistPackageVersions[wpackageName] = packageMeta.version;
+              } else {
+                  console.error(`Could not find package ${packageName}`);
+              }
+          }
+      }
+
+      composerJson = composerJson.replace(
+        /\$tghp:([^:]*):([^@]*)@latest\$/g,
+        (match, source, packageName) => {
+            console.log({
+                source,
+                packageName,
+            })
+          if (source === 'packagist') {
+            return composerPackageVersions[packageName];
+          } else if (source === 'wpackagist') {
+            return wpackagistPackageVersions[packageName];
+          }
+
+          return '';
+        }
+      );
+
+      fs.writeFileSync(`${this.dest}/composer.json`, composerJson);
     }
 }
 
